@@ -3,28 +3,863 @@ title: "STAI Stability Analysis"
 author: "Franziska Werner"
 date: "29 10 2021"
 output: word_document
+papaja::apa6_docx: default
+floatsintext: no
+figurelist: no
+tablelist: no
+footnotelist: no
+linenumbers: no
+mask: no
+draft: no
+documentclass: apa6
+classoption: man
+affiliation:
+- id: '1'
+  institution: UKE 
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 ```
 
-## R Markdown
+```{r, load libraries and data files, message=FALSE}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+library("papaja")
+r_refs("r-references.bib")
+library(car)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(psych)
+#library(DescTools)
+library(data.table)
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(jmv)
+library(sjPlot)
+library(ggpubr)
+library(ggExtra)
+library(lcsm)
+library(zoo)
+library(grid)
+library(cowplot)
+library(gridExtra)
+library(apaTables)
+library(forcats)
+library(ez)
+library(stringr)
+library(PupillometryR)
+library(lattice)
+library(rmarkdown)
+library(Rmisc)
+library(gghalves)
+library(devtools)
+library(gghighlight)
+library(lme4)
+library(sjstats)
+library(emmeans)
+library(performance)
+library(randomForest)
+library(see)
+library(here)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+load(here::here("data/StaiRetest.Rdata"))
+load(here::here("data/B07_STAI_T.Rdata"))
+load(here::here("data/B07_STAI_T_items.Rdata"))
+load(here::here("data/B07_STAI_S.Rdata"))
+load(here::here("data/B07_time_gaps.Rdata"))
 
-```{r cars}
-summary(cars)
 ```
 
-## Including Plots
+```{r, complete dataset first measurement, warning=FALSE, message=FALSE, results='hide'}
+id.core <- matdata$staiRetest[[1]][[1]][,1]
+items.core <- matdata$staiRetest[[1]][[1]][,2:21]
+items.fMRT <- matdata$staiRetest[[2]][[1]][,2:21]
+items.v1 <- matdata$staiRetest[[3]][[1]][,2:21]
 
-You can also embed plots, for example:
+items.core.tb <- as_tibble(items.core)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+data.MP1 <- tibble(
+  ID = id.core,
+  items.core.tb
+)
+
+names(data.MP1)[2:ncol(data.MP1)] <- paste0(rep("MP1_Item", each = 20), 1:20)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r, generate dataset first sample, results='hide'}
+# Pick people from 2nd measurement time point from the first (core) data set
+fmrt.choice <- matdata$staiRetest[[2]][[2]][,2]
+data.MP1[fmrt.choice,]
+
+v1.choice <- matdata$staiRetest[[3]][[2]][,2]
+data.MP1[v1.choice,]
+
+# Connect fmrt und v1 to complete dataset (1st measurement point)
+data.MP1.komplett <- data.MP1 %>%
+  {rbind(.[fmrt.choice,], .[v1.choice,])} %>%
+  {.[-c(31),]} # 31st person being excluded
+
+# data (items) 2nd measuring point 
+items.M2 <- as_tibble(rbind(items.fMRT, items.v1))
+# rename columns
+names(items.M2)[1:ncol(items.M2)] <- paste0(rep("MP2_Item", each = 20), 1:20)
+data.MP2 <- items.M2[-c(31),]
+
+data.M1_M2 <- as_tibble(cbind(data.MP1.komplett, data.MP2))
+
+# recoding
+data.R <- data.M1_M2 %>%
+    mutate(across(c(MP1_Item1, MP1_Item6, MP1_Item7, MP1_Item10, MP1_Item13, MP1_Item16, MP1_Item19, MP2_Item1, MP2_Item6, MP2_Item7, MP2_Item10, MP2_Item13, MP2_Item16, MP2_Item19),
+        ~recode(., `1` = 4, `2` = 3, `3` = 2, `4` = 1)
+    ))
+
+data <- tibble(
+  ID = 1:nrow(data.R),
+  ID.correspond = data.R$ID,
+  OS_M1 = rowSums(data.R[, 2:21]),
+  OS_M2 = rowSums(data.R[, 22:41]),
+  data.R[2:ncol(data.R)]
+)
+
+```
+
+```{r, generate dataset second sample, results='hide'}
+tb.data <- as_tibble(B07_STAI_T)
+
+# check number of NAs
+sum(is.na(tb.data$STAIT_T3))
+
+# exclude NAs
+tb.data <- tb.data %>% filter(!is.na(STAIT_Z02), !is.na(STAIT_T3), !is.na(STAIT_T4), !is.na(STAIT_T5))
+
+## alternative way to exclude NAs
+#test <- tb.data %>%
+#  drop_na(STAIT_Z02, STAIT_T3, STAIT_T4, STAIT_T5)
+
+# renaming 
+tb.data <- tb.data %>% rename(T1 = STAIT_Z02, T2 = STAIT_T3, T3 = STAIT_T4, T4 = STAIT_T5, T5 = STAIT_T5.2)
+```
+
+```{r, load STAI-S data and remove NAs from dataset}
+# load STAI-S data (corresponding items are already inverted)
+tb.STAI.S <- as_tibble(B07_STAI_S)
+
+tb.STAI.S.w <- tb.STAI.S %>% select(id, timepoint, STAI_S_Sum) %>% pivot_wider(names_from = timepoint, values_from = STAI_S_Sum)
+
+## remove NAs
+tb.STAI.S.w.rmNA <- tb.STAI.S.w[complete.cases(tb.STAI.S.w), ]
+
+```
+
+```{r, ICC}
+# ICC Calculation with psych (detach("package:DescTools", unload=TRUE))
+icc <- c()
+pVal.T1 <- c()
+lowBound <- c()
+upperBound <- c()
+
+for (i in 1:20){
+  dataframe <- data.frame(data[,i+4], data[,i+24])
+  icc2 <- round(ICC(dataframe, missing = FALSE, lmer = FALSE)[[1]][2,2:8], 3)
+  icc[i] <- icc2[[1]]
+  pVal.T1[i] <- icc2[[5]]
+  lowBound[i] <- icc2[[6]]
+  upperBound[i] <- icc2[[7]]
+}
+
+dataframe.ICC <- data.frame(Item = 1:20, ICC = icc)
+
+## ICC overall score
+# generate dataframe for ICC calculation
+df.tScore.icc <- data.frame(data$OS_M1, data$OS_M2)
+# calculate ICC
+icc.ts <- round(ICC(df.tScore.icc, missing = FALSE, lmer = FALSE)[[1]][2,2], 3) # ICC2 = 0.426
+```
+
+```{r, Cronbachs alpha, echo=FALSE}
+ia1 <- data %>%
+  select(MP1_Item1:MP1_Item20) %>%
+  alpha()
+
+cronbachs.Alpha.1 <- ia1$total$raw_alpha
+alpha.minus.item.1 <- ia1$alpha.drop$raw_alpha  # alpha, if deleted
+trennschärfe.1 <- ia1$item.stats$r.drop
+schwierigkeit.1 <- ia1$item.stats$mean/4
+
+tb1.internal.consistency <- round(tibble(
+  Item = 1:20,
+  Discrimination = trennschärfe.1,
+  Difficulty = schwierigkeit.1
+), digits = 3)
+
+```
+
+```{r}
+ia <- data %>%
+  select(MP2_Item1:MP2_Item20) %>% 
+  alpha()
+
+cronbachs.Alpha <- ia$total$raw_alpha
+alpha.minus.item <- ia$alpha.drop$raw_alpha
+trennschärfe <- ia$item.stats$r.drop
+schwierigkeit <- ia$item.stats$mean/4
+
+tb2.internal.consistency <- round(tibble(
+  Discrimination = trennschärfe,
+  Difficulty = schwierigkeit, 
+  ICC = icc,
+  lowerBound = lowBound,
+  upperBound = upperBound
+), digits = 3)
+
+```
+
+```{r, results='hide'}
+# conversion to long data format
+
+data.long <- tb.data %>%
+  pivot_longer(cols = c(T1, T2, T3, T4, T5), names_to = "Time", values_to = "Score")
+
+```
+
+# Methods
+ <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
+@spielberger2010
+
+## Participants
+- trial 1: 105 participants
+- trial 2: 87 participants 
+
+-> add: age, sex and education?
+
+## Material
+- description of context in which data was collected
+
+## Data analysis
+<!-- We used `r cite_r("r-references.bib")` for all our analyses. -->
+
+Analysis was conducted in R (R Core Team, 2017) and figures were produced using the package ggplot2 (Wickham, 2009).
+
+# Results
+
+
+```{r, Boxplot first sample, results='hide'}
+tb.long <- data %>% 
+  select(OS_M1:OS_M2) %>%
+  pivot_longer(c(OS_M1, OS_M2))
+
+mp <- rep(c(1.0,2.0), times = 105)
+
+tb.boxPlot <- tibble(
+  Total.Score = tb.long,
+  MP = mp
+)
+
+tb.boxPlot$MP <- as.factor(tb.boxPlot$MP)
+
+bp_trial1 <- 
+  ggplot(tb.boxPlot, aes(x = MP, y = Total.Score$value)) +
+  geom_boxplot(color = "coral2", outlier.colour = "red", outlier.shape = 8, outlier.size = 2, notch = T, show.legend = F, lwd = .3) + 
+  ylim(20, 60) +
+  labs(title = "",x = "Measurement", y = "Total Score") +
+  theme_apa() + theme(axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+```
+
+```{r, Boxplot second sample}
+# select subset and transform to long 
+tb.data.long <- tb.data %>% 
+  select(T1, T4) %>%
+  pivot_longer(c(T1, T4))
+
+tb.boxPlot2 <- tibble(
+  Score = tb.data.long$value,
+  Measurement = tb.data.long$name
+)
+
+# renaming for consistency (plot)
+tb.boxPlot2$Measurement[ tb.boxPlot2$Measurement == "T1" ] <- 1
+tb.boxPlot2$Measurement[ tb.boxPlot2$Measurement == "T4" ] <- 4
+
+bp_trial2 <- 
+  ggplot(tb.boxPlot2, aes(x = Measurement, y = Score)) +
+  geom_boxplot(color = '#91D1C2B2', outlier.colour = "red", outlier.shape = 8, outlier.size = 2, notch = T, show.legend = F, lwd = .3) +
+  ylim(20, 60) +
+  labs(title="",x="Measurement", y = "") +
+  theme_apa() + theme(title = element_text(size = 10), axis.title.x = element_text(size = 8), axis.text = element_text(size = 8), axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) 
+```
+
+```{r, Violin-Box-Scatter-Spaghetti-Plot Trial 1, warning=FALSE}
+tbl.T1.wide <- data %>% rename("1" = OS_M1, "2" = OS_M2)
+
+tbl.T1.long <- tbl.T1.wide %>% select(ID, "1", "2") %>%
+  pivot_longer(cols = c("1", "2"), names_to = "Time", values_to = "Score")
+
+tbl.T1.long$Time <- as.numeric(as.character(tbl.T1.long$Time))
+```
+
+```{r}
+df.summary.T1 <- summarySE(tbl.T1.long, measurevar = "Score", groupvars = c("Time"))
+```
+
+```{r, Violin-Box-Scatter-Spaghetti-Plot 1st sample, warning=FALSE}
+vbssp.Plt.T1 <- 
+  ggplot(tbl.T1.long, aes(x = as.numeric(Time), y = Score), fill = Time) + 
+  geom_point(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1), color = 'coral2', size = .8, 
+              alpha = .6, position = position_jitter(w = 0.1, h = 0)) +
+  geom_point(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2), color = 'coral2', size = .8, 
+              alpha = .6, position = position_jitter(w = 0.1, h = 0)) +
+  geom_line(aes(x = Time, group = ID), color = 'lightgray', alpha = .3) +
+  geom_half_boxplot(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1, y = Score), position = position_nudge(x = -.28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) +
+  geom_half_boxplot(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2, y = Score), position = position_nudge(x = .28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) + 
+  geom_half_violin(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = 'coral2', trim = FALSE, alpha=.6) +
+  geom_half_violin(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = 'coral2', trim = FALSE, alpha = .6) + 
+  geom_point(data = df.summary.T1, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = 1) +
+  geom_line(data = df.summary.T1, aes(x = Time, y = Score), color = 'blue', alpha = 1) +
+  geom_errorbar(data = df.summary.T1, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
+  labs(title = "1st sample: Score for first and second measurement ", x = "Time") +
+  ylim(20, 60) +
+  theme_apa() +
+  scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T2"), limits=c(0, 3)) +
+  theme(title = element_text(size = 10), axis.title = element_text(size = 9), axis.text = element_text(size = 9))
+  
+```
+
+```{r, prepare data for violin-box-scatter-spaghettiplot for second sample}
+# caution: T4 is now renamed to "2" due to later plotting reasons...
+tbl.T2.wide <- tb.data %>% rename("1" = T1, "2" = T4)
+
+tbl.T2.long <- tbl.T2.wide %>% select(id, "1", "2") %>%
+  pivot_longer(cols = c("1", "2"), names_to = "Time", values_to = "Score")
+
+tbl.T2.long$Time <- as.numeric(as.character(tbl.T2.long$Time))
+```
+
+```{r}
+df.summary.T2 <- summarySE(tbl.T2.long, measurevar = "Score", groupvars = c("Time"))
+```
+
+```{r, Violin-Box-Scatter-Spaghetti-Plot 2nd sample, warning=FALSE}
+vbssp.Plt.T2 <- ggplot(tbl.T2.long, aes(x = as.numeric(Time), y = Score), fill = Time) + 
+  geom_point(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1), color = '#91D1C2B2', size = .8, 
+              alpha = .6, position = position_jitter(w = 0.1, h = 0)) +
+  geom_point(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2), color = '#91D1C2B2', size = .8, 
+              alpha = .6, position = position_jitter(w = 0.1, h = 0)) +
+  geom_line(aes(x = Time, group = id), color = 'lightgray', alpha = .3) +
+  geom_half_boxplot(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1, y = Score), position = position_nudge(x = -.28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) +
+  geom_half_boxplot(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2, y = Score), position = position_nudge(x = .28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) + 
+  geom_half_violin(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = '#91D1C2B2', trim = FALSE) +
+  geom_half_violin(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = '#91D1C2B2', trim = FALSE) + 
+  geom_point(data = df.summary.T2, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = .6) +
+  geom_line(data = df.summary.T2, aes(x = Time, y = Score), color = 'blue', alpha = .8) +
+  geom_errorbar(data = df.summary.T2, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
+  labs(title = "2nd sample: Score for first and fourth measurement ", x = "Time") +
+  ylim(20, 60) +
+  theme_apa() +
+  scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T4"), limits=c(0, 3)) +
+  theme(title = element_text(size = 10), axis.title.x = element_text(size = 9), axis.title.y = element_blank(), axis.text = element_text(size = 9), axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank())
+
+```
+
+```{r, fig.width = 12, fig.height = 5, fig.cap = "Achieved scores. Shown are the STAI-T scores for respective measurements of the first (A) and second (B) trial and individual changes in score between these measurements. Single points represent the number of participants and the bold blue line indicates the mean change.", warning=FALSE}
+plot_grid(vbssp.Plt.T1, NULL, vbssp.Plt.T2, labels = c('A', '', 'B'), label_x = c(.02, 0, -.08), nrow = 1, rel_widths = c(1, .08, 1))
+```
+
+```{r}
+tbl.ItemAnalysis <- cbind(tb1.internal.consistency, tb2.internal.consistency)
+```
+
+```{r, message=FALSE, results='hide'}
+# transform columns of dataframe tbl.ItemAnalysis so that leading zeros are omitted
+omitZeros <- c()
+i = 1
+numformat <- function(val) { sub("^(-?)0.", "\\1.", sprintf("%.2f", val)) }
+
+for (k in 2:8){
+  for (val in tbl.ItemAnalysis[,k]) {
+    print(val)
+    omitZeros[i] <- numformat(val)
+    i <- i + 1
+  }
+  tbl.ItemAnalysis[,k] <- omitZeros
+  omitZeros <- c()
+  i = 1
+  }
+```
+
+
+```{r, add significance level 1st sample, results='hide'}
+
+icc[1] <- ".26**"
+icc[2] <- ".43**"
+icc[3] <- ".26**"
+icc[4] <- ".14"
+icc[5] <- ".40**"
+icc[6] <- ".04"
+icc[7] <- ".32**"
+icc[8] <- ".29**"
+icc[9] <- ".36**"
+icc[10] <- ".28**"
+icc[11] <- ".41**"
+icc[12] <- ".52**"
+icc[13] <- ".35**"
+icc[14] <- ".32**"
+icc[15] <- ".35**"
+icc[16] <- ".29**"
+icc[17] <- ".29**"
+icc[18] <- ".23**"
+icc[19] <- ".39**"
+icc[20] <- ".39**"
+
+tbl.ItemAnalysis$ICC <- icc
+```
+
+```{r, results="asis"}
+
+apa_table(tbl.ItemAnalysis,
+          align = c("c", rep("c", 8)),
+          caption = "Item Analysis and item stability.",
+          note =  "Total number of participants was $N = 105$. Cronbach's $\\alpha$ resulted in .87 and .89 for the first and the second measurement. \\\\ $^a$ The definition choice was absolute agreement. \\\\ *$p$ < .05   **$p$ < .01",   
+          escape = FALSE,
+          format.args = list(digits = c(0, 2, 2, 2, 2, 2, 2, 2)),
+          #format = "latex",
+          col.names = c("Item", "Discrimination", "Difficulty", "Discrimination", "Difficulty", "ICC(2,1)$^a$", "LL", "UL"),
+          col_spanners = list(`Measurement 1` = c(2, 3), `Measurement 2` = c(4, 5), `95\\,\\% CI` = c(7, 8)))
+          
+```
+
+```{r, generate dataset 2nd sample single item responses, results='hide'}
+
+tb.allData <- as_tibble(B07_STAI_T_items)
+
+## check number of NA's
+sum(is.na(tb.allData))
+
+## rename timepoints ##
+# R base
+# tb.allData$timepoint[ tb.allData$timepoint == "Z02" ] <- "T1"
+
+tb.allData <- tb.allData %>% mutate( timepoint = ifelse(timepoint == "Z02","T1", timepoint ) )
+tb.allData <- tb.allData %>% mutate( timepoint = ifelse(timepoint == "T3","T2", timepoint ) )
+tb.allData <- tb.allData %>% mutate( timepoint = ifelse(timepoint == "T4","T3", timepoint ) )
+tb.allData <- tb.allData %>% mutate( timepoint = ifelse(timepoint == "T5","T4", timepoint ) )
+tb.allData <- tb.allData %>% mutate( timepoint = ifelse(timepoint == "T5.2","T5", timepoint ) )
+
+## recode items
+tb.allData.Re <- tb.allData %>%
+    mutate(across(c(STAI1, STAI6, STAI7, STAI10, STAI13, STAI16, STAI19),
+        ~recode(., `1` = 4, `2` = 3, `3` = 2, `4` = 1)
+    ))
+
+```
+
+```{r, ICC calculation single items 2nd sample, message=FALSE}
+
+## to consider just the 87 participants
+sample2nd.T1 <- tb.allData.Re %>% subset(timepoint == "T1")
+sample2nd.T1.red <- inner_join(sample2nd.T1, tb.data %>% select(id))
+
+row.sums.T1 <- rowSums(sample2nd.T1.red[,3:22]) 
+
+sample2nd.T4 <- tb.allData.Re %>% subset(timepoint == "T4")
+sample2nd.T4.red <- inner_join(sample2nd.T4, tb.data %>% select(id))
+
+row.sums.T4 <- rowSums(sample2nd.T4.red[,3:22]) # just to test whether I get same results as Maren
+
+sample2nd.T1.T4 <- rbind(sample2nd.T1.red, sample2nd.T4.red)
+
+icc.items.T2 <- c()
+pV.T2 <- c()
+lowBound.T2 <- c()
+upperBound.T2 <- c()
+tb.Items <- tb.allData.Re %>% select(starts_with("S"))
+stai <- c(names(tb.Items))
+k <- 1
+
+for (item in stai) {
+  
+    tb.Cor <- sample2nd.T1.T4[, c("id", "timepoint", item)] %>%
+    pivot_wider(names_from = timepoint, values_from = item) %>%
+    select(T1, T4)
+    
+    icc.items.T2[k] <- round(ICC(tb.Cor, missing = FALSE, lmer = FALSE)[[1]][2,2], 2)
+    pV.T2[k]        <- ICC(tb.Cor, missing = FALSE, lmer = FALSE)[[1]][2,6]
+    lowBound.T2[k]  <- round(ICC(tb.Cor, missing = FALSE, lmer = FALSE)[[1]][2,7], 2)
+    upperBound.T2[k]<- round(ICC(tb.Cor, missing = FALSE, lmer = FALSE)[[1]][2,8], 2)
+    k <- k + 1
+}
+
+```
+
+```{r, internal consistency 2nd sample 1st measurement, message=FALSE}
+
+ia.T2.M1 <- sample2nd.T1.T4 %>%
+  subset(timepoint == "T1") %>%
+  select(STAI1:STAI20) %>%
+  alpha()
+
+cronbachs.Alpha.T2.M1 <- ia.T2.M1$total$raw_alpha
+alpha.minus.item.T2.M1 <- ia.T2.M1$alpha.drop$raw_alpha  # alpha, if deleted
+discrimination.T2.M1 <- ia.T2.M1$item.stats$r.drop
+difficulty.T2.M1 <- ia.T2.M1$item.stats$mean/4
+
+tb1.internal.consistency.T2 <- round(tibble(
+  Item = 1:20,
+  Discrimination = discrimination.T2.M1,
+  Difficulty = difficulty.T2.M1
+), digits = 2)
+
+```
+
+```{r, internal consistency 2nd sample 2nd measurement, message=FALSE}
+
+ia.T2.M2 <- sample2nd.T1.T4 %>%
+  subset(timepoint == "T4") %>%
+  select(STAI1:STAI20) %>%
+  alpha()
+
+cronbachs.Alpha.T2.M2 <- ia.T2.M2$total$raw_alpha
+alpha.minus.item.T2.M2 <- ia.T2.M2$alpha.drop$raw_alpha
+discrimination.T2.M2 <- ia.T2.M2$item.stats$r.drop
+difficulty.T2.M2 <- ia.T2.M2$item.stats$mean/4
+
+tb2.internal.consistency.T2 <- round(tibble(
+  Discrimination = discrimination.T2.M2,
+  Difficulty = difficulty.T2.M2, 
+  ICC = icc.items.T2,
+  lowerBound = lowBound.T2,
+  upperBound = upperBound.T2
+), digits = 2)
+
+```
+
+```{r, message=FALSE}
+tbl.ItemAnalysis.T2 <- cbind(tb1.internal.consistency.T2, tb2.internal.consistency.T2)
+```
+
+```{r, results='hide'}
+# transform columns of dataframe tbl.ItemAnalysis so that leading zeros are omitted
+omitZeros <- c()
+i = 1
+numformat <- function(val) { sub("^(-?)0.", "\\1.", sprintf("%.2f", val)) }
+
+for (k in 2:8){
+  for (val in tbl.ItemAnalysis.T2[,k]) {
+    print(val)
+    omitZeros[i] <- numformat(val)
+    i <- i + 1
+  }
+  tbl.ItemAnalysis.T2[,k] <- omitZeros
+  omitZeros <- c()
+  i = 1
+  }
+```
+
+```{r, significance level to ICC column, echo=FALSE}
+icc.items.T2[1] <- ".48**" 
+icc.items.T2[2] <- ".37**" 
+icc.items.T2[3] <- ".30**"  
+icc.items.T2[4] <- ".10"   
+icc.items.T2[5] <- ".45**"  
+icc.items.T2[6] <- ".22*"  
+icc.items.T2[7] <- ".38**"  
+icc.items.T2[8] <- ".30**"  
+icc.items.T2[9] <- ".35**" 
+icc.items.T2[10] <- ".49**" 
+icc.items.T2[11] <- ".52**" 
+icc.items.T2[12] <- ".47**" 
+icc.items.T2[13] <- ".48**" 
+icc.items.T2[14] <- ".13" 
+icc.items.T2[15] <- ".18*" 
+icc.items.T2[16] <- ".37**" 
+icc.items.T2[17] <- ".37**" 
+icc.items.T2[18] <- ".44**" 
+icc.items.T2[19] <- ".49**" 
+icc.items.T2[20] <- ".23**" 
+
+tbl.ItemAnalysis.T2$ICC <- icc.items.T2
+
+```
+
+```{r, results="asis", message=FALSE}
+
+apa_table(tbl.ItemAnalysis.T2,
+          align = c("c", rep("c", 8)),
+          caption = "Item Analysis and item stability.",
+          note =  "Total number of participants was $N = 87$. Cronbach's $\\alpha$ resulted in .87 and .92 for the first and the fourth measurement. \\\\ $^a$ The definition choice was absolute agreement. \\\\ *$p$ < .05   **$p$ < .01",   
+          escape = FALSE,
+          format.args = list(digits = c(0, 2, 2, 2, 2, 2, 2, 2)),
+          col.names = c("Item", "Discrimination", "Difficulty", "Discrimination", "Difficulty", "ICC(2,1)$^a$", "LL", "UL"),
+          col_spanners = list(`Measurement 1` = c(2, 3), `Measurement 2` = c(4, 5), `95\\,\\% CI` = c(7, 8)))
+```
+
+```{r, correlation plot 1st sample, message = F, warning = F}
+
+ICC.T1 <- ICC(data %>% select(OS_M1, OS_M2), missing = F, lmer = F)
+
+ICC2.T1 <- round(ICC.T1[[1]][2,2], 3)
+p.T1    <- ICC.T1[[1]][2,6]
+lowB.T1 <- round(ICC.T1[[1]][2,7], 3)
+upB.T1  <- round(ICC.T1[[1]][2,8], 3)
+
+plt.CorTS.T1 <-
+  ggplot(data, aes(x = OS_M1, y = OS_M2)) + 
+  geom_point(size = .3, color = "coral2") + 
+  geom_smooth(aes(fill = "coral2"), method ="lm", se = TRUE, color = "coral2", size = .8, show.legend = F) +
+  annotate("text", x = 32, y = 62, label = "ICC(2,1): abs. agreement = .43", size = 3) +
+  ylim(20, 62) +
+  labs(title = "1st sample: ICC Total Score", x = "First measurement", y = "Measurement after approx. 41 months") +
+  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+```
+
+```{r, correlation plot 2nd sample}
+
+ICC.T2 <- ICC(tb.data %>% select(T1, T4), missing = F, lmer = F)
+
+ICC2.T2 <- round(ICC.T2[[1]][2,2], 3)
+p.T2    <- ICC.T2[[1]][2,6]
+lowB.T2 <- round(ICC.T2[[1]][2,7], 3)
+upB.T2  <- round(ICC.T2[[1]][2,8], 3)
+
+plt.CorTS.T2 <- 
+  ggplot(tb.data, aes(x = T1, y = T4)) + 
+  geom_point(size = .3, col = '#91D1C2B2', alpha = 1) + 
+  geom_smooth(method="lm", se = TRUE, fill = '#91D1C2B2', col = '#91D1C2B2', size = .8, show.legend = F) +
+  annotate("text", x = 33, y = 62, label = "ICC(2,1): abs. agreement = .49", size = 3) +
+  labs(title = "2nd sample: ICC Total Score", x = "First measurement", y = "Measurement after approx. 32 months") +
+  ylim(20, 62) +
+  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+```
+
+```{r, fig.cap = "Retest Reliability. Shown are correlations in achieved total score between two measurements for sample one (A) and sample two (B). Single points represent individual participants.", fig.width=8, fig.height=4}
+
+plot_grid(plt.CorTS.T1, plt.CorTS.T2, labels = c('A', 'B'))
+
+```
+
+```{r, results='hide', fig.cap = "Correlations in total score for the STAI-S. Number of participants was 72.", fig.width=6, fig.height=4, warning=FALSE}
+## STAI-S Total Score Correlation
+ICC.STAI.S <- ICC(tb.STAI.S.w.rmNA %>% select(T0, T5), missing = F, lmer = F)
+
+ICC2.STAI.S <- round(ICC.STAI.S[[1]][2,2], 3)
+p.STAI.S    <- ICC.STAI.S[[1]][2,6]
+lowB.STAI.S <- round(ICC.STAI.S[[1]][2,7], 3)
+upB.STAI.S  <- round(ICC.STAI.S[[1]][2,8], 3)
+
+plt.CorTS.STAI.S <- 
+  ggplot(tb.STAI.S.w.rmNA, aes(x = T0, y = T5)) + 
+  geom_point(size = .3, col = 'black', alpha = 1) + 
+  geom_smooth(method="lm", se = TRUE, fill = 'lightgray', col = 'black', size = .8, show.legend = F) +
+  annotate("text", x = 28, y = 50, label = "ICC(2,1): abs. agreement = .275, p = 6.4e-04", size = 3) +
+  labs(title = "STAI-S: ICC Total Score", x = "First measurement", y = "Fourth measurement") +
+  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+
+```
+
+```{r, generate dataset for first ANOVA (factors: time and item)}
+tb.ANOVA <- tibble(
+  score = c(rep(data$OS_M1, 20),rep(data$OS_M2, 20)),
+  timepoint = factor(c(rep(1, 2100),rep(2,2100))),
+  item = factor(c(rep(1, 105), rep(2, 105), rep(3, 105), rep(4, 105), rep(5, 105), rep(6, 105), rep(7, 105), rep(8, 105), rep(9, 105), rep(10, 105), rep(11, 105), rep(12, 105), rep(13, 105), rep(14, 105), rep(15, 105), rep(16, 105), rep(17, 105), rep(18, 105), rep(19, 105), rep(20, 105), rep(1, 105), rep(2, 105), rep(3, 105), rep(4, 105), rep(5, 105), rep(6, 105), rep(7, 105), rep(8, 105), rep(9, 105), rep(10, 105), rep(11, 105), rep(12, 105), rep(13, 105), rep(14, 105), rep(15, 105), rep(16, 105), rep(17, 105), rep(18, 105), rep(19, 105), rep(20, 105)))
+)
+```
+
+```{r, results='hide'}
+result.ANOVA <- aov(score ~ timepoint * item, data = tb.ANOVA)
+summary(result.ANOVA)
+anova.out <- apa_print(result.ANOVA)
+```
+
+The twofactorial ANOVA showed a temporal effect on the total score (`r anova.out$full_result$timepoint`), whereas the individual items had no effect (`r anova.out$full_result$item`).  
+
+```{r, mixed model, results='hide'}
+
+#resMM1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
+#summary(resMM1)
+
+id.vec <- rep(1:105, 40)
+tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
+
+### car als extension für lmer 
+m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID , 
+contrasts=list(timepoint = contr.sum, item = contr.sum )) #,type = 3)
+dist <- check_distribution(m1)
+plot(dist)
+anova(m1,type = '3')
+effectsize::omega_squared(m1)
+lsmeans(m1, pairwise ~ timepoint * item, adjust = "tukey")
+
+### wiederholte Messungen und Longitudinaldaten
+#res1 <- lmer(score ~ timepoint + item + (1 | id), data = tb.ANOVA.ID, REML = FALSE, na.action = na.omit)
+#res2 <- lmer(score ~ timepoint + item + (1 + timepoint | id), data = tb.ANOVA.ID, REML = FALSE, na.action = na.omit)
+#anova(res1, res2)
+
+```
+
+```{r, generate dataset for ANOVA 2nd sample: Effect of Lockdown}
+data.after <- tb.data %>% 
+  subset(., tb.data$participated_lockdown == "after")
+data.before <- tb.data[grep("before",tb.data$participated_lockdown),]
+data.within <- tb.data %>% subset(participated_lockdown == "within")
+
+# combine "within" datasets
+d.within1 <- data.within[,c(1,4,7)]
+d.within2 <- tb.data[grep("within/after",tb.data$participated_lockdown),][,c(1,4,7)]
+d.within <- arrange(rbind(d.within2, d.within1), id)
+
+tb.ANOVA2 <- tibble(
+  score = c(data.before$T1, d.within$T1, data.after$T1, data.before$T4, d.within$T4, data.after$T4), 
+  timePoint = factor(c(rep(1, 87), rep(4, 87))), 
+  partLockdown = rep(c(rep("before", 46), rep("within", 19), rep("after", 22)), 2)
+)
+```
+
+```{r, ANOVA, results='hide'}
+result.ANOVA2 <- aov(score ~ timePoint * partLockdown, data = tb.ANOVA2)
+summary(result.ANOVA2)
+anova2.out <- apa_print(result.ANOVA2)
+```
+
+The twofactorial ANOVA showed that it made no difference in terms of total score whether participants completed the STAI-T before, during, or after lockdown (`r anova2.out$full_result$partLockdown`). Therefore, further analysis is done without differentiating between the three subgroups. Instead, we consider the complete data set.  
+
+```{r, mixed model 2nd sample: Did the lockdown influence the achieved score?}
+
+id.vec.2 <- rep(1:87, 2)
+tb.ANOVA2.ID <- tb.ANOVA2 %>% add_column(id = id.vec.2)
+
+m2 <- lmer(score ~ timePoint * partLockdown + (1 | id), data = tb.ANOVA2.ID , 
+contrasts=list(timepoint = contr.sum, partLockdown = contr.sum )) 
+dist <- check_distribution(m2)
+plot(dist)
+anova(m2, type = '3')
+effectsize::omega_squared(m2)
+lsmeans(m2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
+
+```
+
+```{r, ICC Calculation}
+calcICC <- function(tableICC, data_ICC, k){
+
+    results_ICC <- ICC(data_ICC, missing = FALSE, lmer = FALSE)
+    
+    ## fill results table 
+    tableICC$ICC2_agreement[k] <- round(results_ICC[[1]][2,2], 3)
+    tableICC$ICC2_lowerCI[k] <- round(results_ICC[[1]][2,7], 3)
+    tableICC$ICC2_upperCI[k] <- round(results_ICC[[1]][2,8], 3)
+    tableICC$ICC2_p_value[k] <- round(results_ICC[[1]][2,6], 6)
+    
+    return(tableICC)
+}
+```
+
+```{r}
+### Create empty matrix for results
+ICC_multipleTP <- data.frame(matrix(data = NA, nrow = 6, ncol = 5, byrow = TRUE, dimnames = NULL))
+colnames(ICC_multipleTP) <- c("combinations", "ICC2_agreement","ICC2_lowerCI","ICC2_upperCI","ICC2_p_value")
+```
+
+```{r}
+# for complete dataset (without discrimination between participated lockdown)
+k <- 1
+times1 <- c("T1", "T2", "T3")
+times2 <- c("T1", "T2", "T3", "T4")
+
+  for (j in 1:length(times1)) { 
+    for (l in (j+1):length(times2)) {
+
+    data_ICC <- data.frame(data.long$Score[which(data.long$Time == times1[j])], data.long$Score[which(data.long$Time == times2[l])])
+    
+    ICC_multipleTP <- calcICC(ICC_multipleTP, data_ICC, k)
+    k <- k + 1
+    
+    }
+  }
+
+combinations <- c(rep(c("1,2", "1,3", "1,4", "2,3", "2,4", "3,4")))
+
+ICC_multipleTP$combinations <- combinations
+```
+
+```{r,fig.cap = "ICC for different samples and different time intervals with 95 % confidence intervals. The gray entry indicates the results for the STAI-S, the red one represents the results for the first sample (STAI-T) and the turquoise one represents the results for the second sample (STAI-T) with its different time intervals. Missing data in brackets indicate that there were only two mesaurements in total.", fig.width=6, fig.height=5}
+# we only consider complete data sets (without T5)
+elapsed.Time <- c("32 (1,4)", "26 (1,3)", "20 (1,2)", "12 (2,4)", "6 (3,4)", "5 (2,3)")
+
+grob <- grobTree(textGrob("poor", x=0.06,  y=0.98, hjust=0,
+  gp=gpar(col="gray50", fontsize=8, fontface="italic")))
+
+grob1 <- grobTree(textGrob("moderate", x=0.43,  y=0.98, hjust=0, 
+  gp=gpar(col="gray50", fontsize=8, fontface="italic")))
+
+grob2 <- grobTree(textGrob("good", x=0.73,  y=0.98, hjust=0, 
+  gp=gpar(col="gray50", fontsize=8, fontface="italic")))
+
+grob3 <- grobTree(textGrob("excellent", x=0.84,  y=.98, hjust=0, 
+  gp=gpar(col="gray50", fontsize=8, fontface="italic")))
+
+## new order for later displaying 
+tb.ICC.ordered <- ICC_multipleTP[c(3,2,1,5,6,4),]
+
+ICC2_table <- tb.ICC.ordered %>%
+  add_column(pastTime = elapsed.Time, 
+             .after = "combinations") %>% select(pastTime, ICC2_agreement, ICC2_lowerCI, ICC2_upperCI)
+
+# add STAI-S data to dataframe
+ICC2_tableSTAI <- ICC2_table %>% add_row(pastTime = "31 (1,4)", ICC2_agreement = ICC2.STAI.S, ICC2_lowerCI = lowB.STAI.S, ICC2_upperCI = upB.STAI.S, .after = 1)
+
+# add STAI-T first sample to dataframe 
+ICC2_tableAll <- ICC2_tableSTAI %>% add_row(pastTime = "41", ICC2_agreement = ICC2.T1, ICC2_lowerCI = lowB.T1, ICC2_upperCI = upB.T1, .before = 1)
+
+# add groups to dataframe for later coloring
+df.ICCs <- ICC2_tableAll %>% add_column(group = c("sample1", "sample2", "STAI-S", "sample2", "sample2", "sample2", "sample2", "sample2"), 
+                                        .before = "pastTime")
+
+# to make R respect the order in the dataframe
+df.ICCs$pastTime <- factor(df.ICCs$pastTime, levels = df.ICCs$pastTime[order(df.ICCs$ICC2_agreement)])
+
+# assign color to different groups
+color = rep(NA, length=length(df.ICCs$group))
+color[which(df.ICCs$group=="sample1")] = "coral2"
+color[which(df.ICCs$group=="sample2")] = "#91D1C2B2"
+color[which(df.ICCs$group=="STAI-S")] = "gray50"
+
+  ggplot(df.ICCs, aes(x=ICC2_agreement,y=pastTime, color=color)) +
+  geom_point(show.legend = F, color = color) + 
+  geom_errorbar(aes(xmin=ICC2_lowerCI, xmax=ICC2_upperCI), width=.5, color = color, show.legend = F) +
+
+  geom_vline(xintercept = 0.0, color = "grey50", size = 1, linetype = "dotted") + 
+  geom_vline(xintercept = 0.5, color = "grey50", size = 1, linetype = "dotted") +
+  geom_vline(xintercept = 0.75, color = "grey50", size = 1, linetype = "dotted") +
+  geom_vline(xintercept = 0.9, color = "grey50", size = 1, linetype = "dotted") +
+  annotation_custom(grob) +
+  annotation_custom(grob1) +
+  annotation_custom(grob2) +
+  annotation_custom(grob3) +
+    scale_y_discrete(limits = c("5 (2,3)", "6 (3,4)", "12 (2,4)", "20 (1,2)", "26 (1,3)", "31 (1,4)", "32 (1,4)", "41")) +
+  labs(title = "", x = "ICC(2,1): absolute agreement", y = "Average elapsed time [months] with considered measuring points") +
+  theme_apa() + theme(axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
