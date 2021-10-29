@@ -64,6 +64,7 @@ library(randomForest)
 library(see)
 library(here)
 
+# load data files
 load(here::here("data/StaiRetest.Rdata"))
 load(here::here("data/B07_STAI_T.Rdata"))
 load(here::here("data/B07_STAI_T_items.Rdata"))
@@ -73,18 +74,21 @@ load(here::here("data/B07_time_gaps.Rdata"))
 ```
 
 ```{r, complete dataset first measurement, warning=FALSE, message=FALSE, results='hide'}
+# first data sample is a subset of a core data set with 690 participants
 id.core <- matdata$staiRetest[[1]][[1]][,1]
 items.core <- matdata$staiRetest[[1]][[1]][,2:21]
 items.fMRT <- matdata$staiRetest[[2]][[1]][,2:21]
 items.v1 <- matdata$staiRetest[[3]][[1]][,2:21]
 
-items.core.tb <- as_tibble(items.core)
+tb.items.core <- as_tibble(items.core)
 
+# generate dataframe for all 690 participants (first measuring point)
 data.MP1 <- tibble(
   ID = id.core,
-  items.core.tb
+  tb.items.core
 )
 
+# rename columns to MP1_Item1...20
 names(data.MP1)[2:ncol(data.MP1)] <- paste0(rep("MP1_Item", each = 20), 1:20)
 ```
 
@@ -109,12 +113,16 @@ data.MP2 <- items.M2[-c(31),]
 
 data.M1_M2 <- as_tibble(cbind(data.MP1.komplett, data.MP2))
 
-# recoding
+# recoding specific items 
 data.R <- data.M1_M2 %>%
     mutate(across(c(MP1_Item1, MP1_Item6, MP1_Item7, MP1_Item10, MP1_Item13, MP1_Item16, MP1_Item19, MP2_Item1, MP2_Item6, MP2_Item7, MP2_Item10, MP2_Item13, MP2_Item16, MP2_Item19),
         ~recode(., `1` = 4, `2` = 3, `3` = 2, `4` = 1)
     ))
 
+# data = complete dataframe for first sample: 
+# OS_M1: Overall Score for first measurement, OS_M2: Overall Score for 2nd measurement
+# MP1_Item1-20: Rating for specific item for measuring point 1
+# MP2_Item1-20: Rating for specific item for measuring point 2
 data <- tibble(
   ID = 1:nrow(data.R),
   ID.correspond = data.R$ID,
@@ -134,10 +142,6 @@ sum(is.na(tb.data$STAIT_T3))
 # exclude NAs
 tb.data <- tb.data %>% filter(!is.na(STAIT_Z02), !is.na(STAIT_T3), !is.na(STAIT_T4), !is.na(STAIT_T5))
 
-## alternative way to exclude NAs
-#test <- tb.data %>%
-#  drop_na(STAIT_Z02, STAIT_T3, STAIT_T4, STAIT_T5)
-
 # renaming 
 tb.data <- tb.data %>% rename(T1 = STAIT_Z02, T2 = STAIT_T3, T3 = STAIT_T4, T4 = STAIT_T5, T5 = STAIT_T5.2)
 ```
@@ -153,8 +157,8 @@ tb.STAI.S.w.rmNA <- tb.STAI.S.w[complete.cases(tb.STAI.S.w), ]
 
 ```
 
-```{r, ICC}
-# ICC Calculation with psych (detach("package:DescTools", unload=TRUE))
+```{r, ICC calculation for first sample}
+# ICC Calculation with psych (detach("package:DescTools", unload=TRUE)) to have the confidence intervals calculated as well
 icc <- c()
 pVal.T1 <- c()
 lowBound <- c()
@@ -179,6 +183,7 @@ icc.ts <- round(ICC(df.tScore.icc, missing = FALSE, lmer = FALSE)[[1]][2,2], 3) 
 ```
 
 ```{r, Cronbachs alpha, echo=FALSE}
+# first sample, first measuring point 
 ia1 <- data %>%
   select(MP1_Item1:MP1_Item20) %>%
   alpha()
@@ -197,6 +202,7 @@ tb1.internal.consistency <- round(tibble(
 ```
 
 ```{r}
+# first sample, second measuring point
 ia <- data %>%
   select(MP2_Item1:MP2_Item20) %>% 
   alpha()
@@ -217,7 +223,7 @@ tb2.internal.consistency <- round(tibble(
 ```
 
 ```{r, results='hide'}
-# conversion to long data format
+# conversion to long data format (second sample)
 
 data.long <- tb.data %>%
   pivot_longer(cols = c(T1, T2, T3, T4, T5), names_to = "Time", values_to = "Score")
@@ -390,7 +396,7 @@ for (k in 2:8){
 
 
 ```{r, add significance level 1st sample, results='hide'}
-
+# prepare data for table (first sample)
 icc[1] <- ".26**"
 icc[2] <- ".43**"
 icc[3] <- ".26**"
@@ -416,7 +422,7 @@ tbl.ItemAnalysis$ICC <- icc
 ```
 
 ```{r, results="asis"}
-
+# generates table for first sample
 apa_table(tbl.ItemAnalysis,
           align = c("c", rep("c", 8)),
           caption = "Item Analysis and item stability.",
@@ -493,7 +499,7 @@ for (item in stai) {
 ```
 
 ```{r, internal consistency 2nd sample 1st measurement, message=FALSE}
-
+# 2nd sample, first measurement
 ia.T2.M1 <- sample2nd.T1.T4 %>%
   subset(timepoint == "T1") %>%
   select(STAI1:STAI20) %>%
@@ -513,7 +519,7 @@ tb1.internal.consistency.T2 <- round(tibble(
 ```
 
 ```{r, internal consistency 2nd sample 2nd measurement, message=FALSE}
-
+# 2nd sample, second measurement
 ia.T2.M2 <- sample2nd.T1.T4 %>%
   subset(timepoint == "T4") %>%
   select(STAI1:STAI20) %>%
@@ -557,6 +563,7 @@ for (k in 2:8){
 ```
 
 ```{r, significance level to ICC column, echo=FALSE}
+# prepare data 2nd sample for table
 icc.items.T2[1] <- ".48**" 
 icc.items.T2[2] <- ".37**" 
 icc.items.T2[3] <- ".30**"  
@@ -583,7 +590,7 @@ tbl.ItemAnalysis.T2$ICC <- icc.items.T2
 ```
 
 ```{r, results="asis", message=FALSE}
-
+# table 2nd sample
 apa_table(tbl.ItemAnalysis.T2,
           align = c("c", rep("c", 8)),
           caption = "Item Analysis and item stability.",
@@ -739,6 +746,7 @@ lsmeans(m2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
 ```
 
 ```{r, ICC Calculation}
+# this functions computes respective ICC values and fills in the result table
 calcICC <- function(tableICC, data_ICC, k){
 
     results_ICC <- ICC(data_ICC, missing = FALSE, lmer = FALSE)
@@ -782,6 +790,7 @@ ICC_multipleTP$combinations <- combinations
 ```
 
 ```{r,fig.cap = "ICC for different samples and different time intervals with 95 % confidence intervals. The gray entry indicates the results for the STAI-S, the red one represents the results for the first sample (STAI-T) and the turquoise one represents the results for the second sample (STAI-T) with its different time intervals. Missing data in brackets indicate that there were only two mesaurements in total.", fig.width=6, fig.height=5}
+# generates multiple ICC plot
 # we only consider complete data sets (without T5)
 elapsed.Time <- c("32 (1,4)", "26 (1,3)", "20 (1,2)", "12 (2,4)", "6 (3,4)", "5 (2,3)")
 
