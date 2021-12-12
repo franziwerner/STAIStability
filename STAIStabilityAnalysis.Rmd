@@ -324,7 +324,7 @@ vbssp.Plt.T1 <-
   geom_point(data = df.summary.T1, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = 1) +
   geom_line(data = df.summary.T1, aes(x = Time, y = Score), color = 'blue', alpha = 1) +
   geom_errorbar(data = df.summary.T1, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
-  labs(title = "1st sample: Score for first and second measurement ", x = "Time") +
+  labs(title = "Sample 1 ", x = "Time (41 months)", y = "STAI-T sum score") +
   ylim(20, 60) +
   theme_apa() +
   scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T2"), limits=c(0, 3)) +
@@ -360,7 +360,7 @@ vbssp.Plt.T2 <- ggplot(tbl.T2.long, aes(x = as.numeric(Time), y = Score), fill =
   geom_point(data = df.summary.T2, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = .6) +
   geom_line(data = df.summary.T2, aes(x = Time, y = Score), color = 'blue', alpha = .8) +
   geom_errorbar(data = df.summary.T2, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
-  labs(title = "2nd sample: Score for first and fourth measurement ", x = "Time") +
+  labs(title = "Sample 2 ", x = "Time (32 months)") +
   ylim(20, 60) +
   theme_apa() +
   scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T4"), limits=c(0, 3)) +
@@ -368,7 +368,7 @@ vbssp.Plt.T2 <- ggplot(tbl.T2.long, aes(x = as.numeric(Time), y = Score), fill =
 
 ```
 
-```{r, fig.width = 12, fig.height = 5, fig.cap = "Achieved scores. Shown are the STAI-T scores for respective measurements of the first (A) and second (B) trial and individual changes in score between these measurements. Single points represent the number of participants and the bold blue line indicates the mean change.", warning=FALSE}
+```{r, fig.width = 12, fig.height = 5, fig.cap = "Illustration of STAI-T scores for (A) Study 1 in red and (B) Study 2 in green which depicts the sample average (blue) at both time-points (A: 41 month apart; B: 32 month apart), individual data points (A: red dots, B: green dots)  as well as box and density plots at both time points. Note that the STAI-T scores of the same individual at both measurement time points are connected through a grey line.", warning=FALSE}
 plot_grid(vbssp.Plt.T1, NULL, vbssp.Plt.T2, labels = c('A', '', 'B'), label_x = c(.02, 0, -.08), nrow = 1, rel_widths = c(1, .08, 1))
 ```
 
