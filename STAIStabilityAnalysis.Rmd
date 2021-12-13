@@ -680,27 +680,33 @@ anova.out <- apa_print(result.ANOVA)
 
 The twofactorial ANOVA showed a temporal effect on the total score (`r anova.out$full_result$timepoint`), whereas the individual items had no effect (`r anova.out$full_result$item`).  
 
-```{r, mixed model}
-
-#resMM1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
-#summary(resMM1)
+```{r, mixed model first sample}
 
 id.vec <- rep(1:105, 40)
 tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
 
-### car als extension für lmer 
-m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID , 
-contrasts=list(timepoint = contr.sum, item = contr.sum )) #,type = 3)
-dist <- check_distribution(m1)
-plot(dist)
-anova(m1,type = '3')
-effectsize::omega_squared(m1)
-lsmeans(m1, pairwise ~ timepoint * item, adjust = "tukey")
+# dV: score, fixed effects: timepoint and item, does association exists after controlling for variation in test person: random effect: (1 | id)
+fitS1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
+print(summary(fitS1))
 
-### wiederholte Messungen und Longitudinaldaten
-#res1 <- lmer(score ~ timepoint + item + (1 | id), data = tb.ANOVA.ID, REML = FALSE, na.action = na.omit)
-#res2 <- lmer(score ~ timepoint + item + (1 + timepoint | id), data = tb.ANOVA.ID, REML = FALSE, na.action = na.omit)
-#anova(res1, res2)
+# random effects part tells me how much variance I find among levels of my grouping factors, plus residual variance
+#Random effects:
+# Groups   Name        Variance Std.Dev.
+# id       (Intercept) 40.45    6.360   
+# Residual             16.85    4.105   
+#Number of obs: 4200, groups:  id, 105
+
+# dividing id variance by total variance (40.45/(40.45 + 16.85)) = 70% -> id explains a lot of variation: 
+# differences between test persons explain approx. 70% of the variance thats left over AFTER!! the variance explained by our fixed effects!!!
+
+### car als extension für lmer 
+#m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID , 
+#contrasts=list(timepoint = contr.sum, item = contr.sum )) #,type = 3)
+#dist <- check_distribution(m1)
+#plot(dist)
+#anova(m1,type = '3')
+#effectsize::omega_squared(m1)
+#lsmeans(m1, pairwise ~ timepoint * item, adjust = "tukey")
 
 ```
 
