@@ -680,7 +680,7 @@ anova.out <- apa_print(result.ANOVA)
 
 The twofactorial ANOVA showed a temporal effect on the total score (`r anova.out$full_result$timepoint`), whereas the individual items had no effect (`r anova.out$full_result$item`).  
 
-```{r, mixed model, results='hide'}
+```{r, mixed model}
 
 #resMM1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
 #summary(resMM1)
