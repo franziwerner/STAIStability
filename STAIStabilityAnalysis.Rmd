@@ -57,6 +57,7 @@ library(gghalves)
 library(devtools)
 library(gghighlight)
 library(lme4)
+library(lmerTest)
 library(sjstats)
 library(emmeans)
 library(performance)
@@ -319,8 +320,8 @@ vbssp.Plt.T1 <-
   geom_line(aes(x = Time, group = ID), color = 'lightgray', alpha = .3) +
   geom_half_boxplot(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1, y = Score), position = position_nudge(x = -.28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) +
   geom_half_boxplot(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2, y = Score), position = position_nudge(x = .28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) + 
-  geom_half_violin(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = 'coral2', trim = FALSE, alpha=.6) +
-  geom_half_violin(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = 'coral2', trim = FALSE, alpha = .6) + 
+  geom_half_violin(data = tbl.T1.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = 'coral2', trim = TRUE, alpha=.6) +
+  geom_half_violin(data = tbl.T1.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = 'coral2', trim = TRUE, alpha = .6) + 
   geom_point(data = df.summary.T1, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = 1) +
   geom_line(data = df.summary.T1, aes(x = Time, y = Score), color = 'blue', alpha = 1) +
   geom_errorbar(data = df.summary.T1, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
@@ -355,8 +356,8 @@ vbssp.Plt.T2 <- ggplot(tbl.T2.long, aes(x = as.numeric(Time), y = Score), fill =
   geom_line(aes(x = Time, group = id), color = 'lightgray', alpha = .3) +
   geom_half_boxplot(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1, y = Score), position = position_nudge(x = -.28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) +
   geom_half_boxplot(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2, y = Score), position = position_nudge(x = .28), side = "l", outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, notch = T, lwd = .3) + 
-  geom_half_violin(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = '#91D1C2B2', trim = FALSE) +
-  geom_half_violin(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = '#91D1C2B2', trim = FALSE) + 
+  geom_half_violin(data = tbl.T2.long %>% filter(Time == 1), aes(x = 1, y = Score), colour = NA, position = position_nudge(x = -.5), side = "l", fill = '#91D1C2B2', trim = TRUE) +
+  geom_half_violin(data = tbl.T2.long %>% filter(Time == 2), aes(x = 2, y = Score), colour = NA, position = position_nudge(x = .4), side = "r", fill = '#91D1C2B2', trim = TRUE) + 
   geom_point(data = df.summary.T2, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = .6) +
   geom_line(data = df.summary.T2, aes(x = Time, y = Score), color = 'blue', alpha = .8) +
   geom_errorbar(data = df.summary.T2, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
@@ -680,6 +681,7 @@ anova.out <- apa_print(result.ANOVA)
 
 The twofactorial ANOVA showed a temporal effect on the total score (`r anova.out$full_result$timepoint`), whereas the individual items had no effect (`r anova.out$full_result$item`).  
 
+## Mixed Model Sample 1 
 ```{r, mixed model first sample}
 
 id.vec <- rep(1:105, 40)
@@ -736,18 +738,26 @@ anova2.out <- apa_print(result.ANOVA2)
 
 The twofactorial ANOVA showed that it made no difference in terms of total score whether participants completed the STAI-T before, during, or after lockdown (`r anova2.out$full_result$partLockdown`). Therefore, further analysis is done without differentiating between the three subgroups. Instead, we consider the complete data set.  
 
-```{r, mixed model 2nd sample: Did the lockdown influence the achieved score?}
+### Mixed Model Sample 2
+```{r, mixed model 2nd sample: Did the lockdown influence the achieved score? Does sex have an influence?}
 
 id.vec.2 <- rep(1:87, 2)
-tb.ANOVA2.ID <- tb.ANOVA2 %>% add_column(id = id.vec.2)
+sex.vec1 <- tb.data %>% select(sex)
+sex.vec2 <- tb.data %>% select(sex)
+sex.vec <- bind_rows(sex.vec1, sex.vec2)
 
-m2 <- lmer(score ~ timePoint * partLockdown + (1 | id), data = tb.ANOVA2.ID , 
-contrasts=list(timepoint = contr.sum, partLockdown = contr.sum )) 
-dist <- check_distribution(m2)
-plot(dist)
-anova(m2, type = '3')
-effectsize::omega_squared(m2)
-lsmeans(m2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
+tb.ANOVA2.ID <- tb.ANOVA2 %>% add_column(sex.vec, id = id.vec.2)
+
+fitS2 <- lmer(score ~ timePoint * partLockdown * sex + (1 | id), data = tb.ANOVA2.ID)
+print(summary(fitS2))
+
+#m2 <- lmer(score ~ timePoint * partLockdown + (1 | id), data = tb.ANOVA2.ID , 
+#contrasts=list(timepoint = contr.sum, partLockdown = contr.sum )) 
+#dist <- check_distribution(m2)
+#plot(dist)
+#anova(m2, type = '3')
+#effectsize::omega_squared(m2)
+#lsmeans(m2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
 
 ```
 
