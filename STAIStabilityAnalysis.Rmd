@@ -688,8 +688,8 @@ id.vec <- rep(1:105, 40)
 tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
 
 # dV: score, fixed effects: timepoint and item, does association exists after controlling for variation in test person: random effect: (1 | id)
-fitS1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
-print(summary(fitS1))
+#fitS1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
+#print(summary(fitS1))
 
 # random effects part tells me how much variance I find among levels of my grouping factors, plus residual variance
 #Random effects:
@@ -702,12 +702,13 @@ print(summary(fitS1))
 # differences between test persons explain approx. 70% of the variance thats left over AFTER!! the variance explained by our fixed effects!!!
 
 ### car als extension für lmer 
-#m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID , 
+m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID) #, 
 #contrasts=list(timepoint = contr.sum, item = contr.sum )) #,type = 3)
-#dist <- check_distribution(m1)
-#plot(dist)
-#anova(m1,type = '3')
+dist <- check_distribution(m1)
+plot(dist)
+anova(m1,type = '3')
 #effectsize::omega_squared(m1)
+effectsize::eta_squared(m1)
 #lsmeans(m1, pairwise ~ timepoint * item, adjust = "tukey")
 
 ```
@@ -738,7 +739,7 @@ anova2.out <- apa_print(result.ANOVA2)
 
 The twofactorial ANOVA showed that it made no difference in terms of total score whether participants completed the STAI-T before, during, or after lockdown (`r anova2.out$full_result$partLockdown`). Therefore, further analysis is done without differentiating between the three subgroups. Instead, we consider the complete data set.  
 
-### Mixed Model Sample 2
+## Mixed Model Sample 2
 ```{r, mixed model 2nd sample: Did the lockdown influence the achieved score? Does sex have an influence?}
 
 id.vec.2 <- rep(1:87, 2)
@@ -748,16 +749,17 @@ sex.vec <- bind_rows(sex.vec1, sex.vec2)
 
 tb.ANOVA2.ID <- tb.ANOVA2 %>% add_column(sex.vec, id = id.vec.2)
 
-fitS2 <- lmer(score ~ timePoint * partLockdown * sex + (1 | id), data = tb.ANOVA2.ID)
-print(summary(fitS2))
+#fitS2 <- lmer(score ~ timePoint * partLockdown * sex + (1 | id), data = tb.ANOVA2.ID)
+#print(summary(fitS2))
 
-#m2 <- lmer(score ~ timePoint * partLockdown + (1 | id), data = tb.ANOVA2.ID , 
-#contrasts=list(timepoint = contr.sum, partLockdown = contr.sum )) 
-#dist <- check_distribution(m2)
-#plot(dist)
-#anova(m2, type = '3')
-#effectsize::omega_squared(m2)
-#lsmeans(m2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
+fitS2 <- lmer(score ~ timePoint * partLockdown * sex + (1 | id), data = tb.ANOVA2.ID , 
+contrasts=list(timePoint = contr.sum, partLockdown = contr.sum )) 
+dist <- check_distribution(fitS2)
+plot(dist)
+anova(fitS2, type = '3')
+effectsize::eta_squared(fitS2)
+#effectsize::omega_squared(fitS2)
+#lsmeans(fitS2, pairwise ~ timePoint * partLockdown, adjust = "tukey")
 
 ```
 
