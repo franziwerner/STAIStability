@@ -325,7 +325,7 @@ vbssp.Plt.T1 <-
   geom_point(data = df.summary.T1, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = 1) +
   geom_line(data = df.summary.T1, aes(x = Time, y = Score), color = 'blue', alpha = 1) +
   geom_errorbar(data = df.summary.T1, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
-  labs(title = "Sample 1 ", x = "Time (41 months)", y = "STAI-T sum score") +
+  labs(title = "Study 1 ", x = "Time (41 months)", y = "STAI-T sum score") +
   ylim(20, 60) +
   theme_apa() +
   scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T2"), limits=c(0, 3)) +
@@ -361,10 +361,10 @@ vbssp.Plt.T2 <- ggplot(tbl.T2.long, aes(x = as.numeric(Time), y = Score), fill =
   geom_point(data = df.summary.T2, aes(x = Time, y = Score), color = "blue", size = 1.5, alpha = .6) +
   geom_line(data = df.summary.T2, aes(x = Time, y = Score), color = 'blue', alpha = .8) +
   geom_errorbar(data = df.summary.T2, aes(x = as.numeric(Time), y = Score, group = Time, ymin = Score-se, ymax = Score+se), width = .05, color = "blue") +
-  labs(title = "Sample 2 ", x = "Time (32 months)") +
+  labs(title = "Study 2 ", x = "Time (32 months)") +
   ylim(20, 60) +
   theme_apa() +
-  scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T4"), limits=c(0, 3)) +
+  scale_x_continuous(breaks=c(1, 2), labels=c("T1", "T7"), limits=c(0, 3)) +
   theme(title = element_text(size = 10), axis.title.x = element_text(size = 9), axis.title.y = element_blank(), axis.text = element_text(size = 9), axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank())
 
 ```
@@ -613,12 +613,13 @@ upB.T1  <- round(ICC.T1[[1]][2,8], 3)
 
 plt.CorTS.T1 <-
   ggplot(data, aes(x = OS_M1, y = OS_M2)) + 
-  geom_point(size = .3, color = "coral2") + 
+  geom_point(size = .3, color = "coral2", position = position_jitter(w = 0.2, h = 0)) + 
   geom_smooth(aes(fill = "coral2"), method ="lm", se = TRUE, color = "coral2", size = .8, show.legend = F) +
-  annotate("text", x = 32, y = 62, label = "ICC(2,1): abs. agreement = .43", size = 3) +
+  annotate("text", x = 32, y = 62, label = "ICC = .43, CI [.29,.55]", size = 3.5) +
   ylim(20, 62) +
-  labs(title = "1st sample: ICC Total Score", x = "First measurement", y = "Measurement after approx. 41 months") +
-  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+  labs(title = "Study 1", x = "First measurement (T1)", y = "Measurement after approx. 41 months (T2)") +
+  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 10), axis.text = element_text(size = 8))
+
 ```
 
 ```{r, correlation plot 2nd sample}
@@ -632,12 +633,12 @@ upB.T2  <- round(ICC.T2[[1]][2,8], 3)
 
 plt.CorTS.T2 <- 
   ggplot(tb.data, aes(x = T1, y = T4)) + 
-  geom_point(size = .3, col = '#91D1C2B2', alpha = 1) + 
+  geom_point(size = .3, col = '#91D1C2B2', alpha = 1, position = position_jitter(w = 0.2, h = 0)) + 
   geom_smooth(method="lm", se = TRUE, fill = '#91D1C2B2', col = '#91D1C2B2', size = .8, show.legend = F) +
-  annotate("text", x = 33, y = 62, label = "ICC(2,1): abs. agreement = .49", size = 3) +
-  labs(title = "2nd sample: ICC Total Score", x = "First measurement", y = "Measurement after approx. 32 months") +
+  annotate("text", x = 33, y = 62, label = "ICC = .49, CI [.34,.62]", size = 3.5) +
+  labs(title = "Study 2", x = "First Measurement (T1)", y = "Measurement after approx. 32 months (T7)") +
   ylim(20, 62) +
-  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+  theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 10), axis.text = element_text(size = 8))
 ```
 
 ```{r, fig.cap = "Retest Reliability. Shown are correlations in achieved total score between two measurements for sample one (A) and sample two (B). Single points represent individual participants.", fig.width=8, fig.height=4}
@@ -681,11 +682,24 @@ anova.out <- apa_print(result.ANOVA)
 
 The twofactorial ANOVA showed a temporal effect on the total score (`r anova.out$full_result$timepoint`), whereas the individual items had no effect (`r anova.out$full_result$item`).  
 
+
+```{r, generate data table for first mixed model analysis}
+
+tb.mixedModel1 <- tibble(
+  score = c(rep(data$OS_M1, 1),rep(data$OS_M2, 1)),
+  timepoint = factor(c(rep(1, 105),rep(2, 105))),
+  id = rep(1:105, 2)
+)
+
+
+```
+
+
 ## Mixed Model Sample 1 
 ```{r, mixed model first sample}
-
-id.vec <- rep(1:105, 40)
-tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
+# when we consider itemwise analysis:
+#id.vec <- rep(1:105, 40)
+#tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
 
 # dV: score, fixed effects: timepoint and item, does association exists after controlling for variation in test person: random effect: (1 | id)
 #fitS1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID)
@@ -702,7 +716,10 @@ tb.ANOVA.ID <- tb.ANOVA %>% add_column(id = id.vec)
 # differences between test persons explain approx. 70% of the variance thats left over AFTER!! the variance explained by our fixed effects!!!
 
 ### car als extension für lmer 
-m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID) #, 
+#m1 <- lmer(score ~ timepoint * item + (1 | id), data = tb.ANOVA.ID) #, 
+#m1 <- lmer(score ~ timepoint + (1 | id), data = tb.ANOVA.ID)
+m1 <- lmer(score ~ timepoint + (1 | id), data = tb.mixedModel1)
+
 #contrasts=list(timepoint = contr.sum, item = contr.sum )) #,type = 3)
 dist <- check_distribution(m1)
 plot(dist)
@@ -810,7 +827,10 @@ ICC_multipleTP$combinations <- combinations
 ```{r,fig.cap = "ICC for different samples and different time intervals with 95 % confidence intervals. The gray entry indicates the results for the STAI-S, the red one represents the results for the first sample (STAI-T) and the turquoise one represents the results for the second sample (STAI-T) with its different time intervals. Missing data in brackets indicate that there were only two mesaurements in total.", fig.width=6, fig.height=5}
 # generates multiple ICC plot
 # we only consider complete data sets (without T5)
-elapsed.Time <- c("32 (1,4)", "26 (1,3)", "20 (1,2)", "12 (2,4)", "6 (3,4)", "5 (2,3)")
+
+# for old y-scaling 
+#elapsed.Time <- c("32 (1,4)", "26 (1,3)", "20 (1,2)", "12 (2,4)", "6 (3,4)", "5 (2,3)")
+elapsed.Time <- c("32 (1,7)", "26 (1,6)", "20 (1,5)", "12 (5,7)", "6 (6,7)", "5 (5,6)")
 
 grob <- grobTree(textGrob("poor", x=0.06,  y=0.98, hjust=0,
   gp=gpar(col="gray50", fontsize=8, fontface="italic")))
@@ -832,27 +852,38 @@ ICC2_table <- tb.ICC.ordered %>%
              .after = "combinations") %>% select(pastTime, ICC2_agreement, ICC2_lowerCI, ICC2_upperCI)
 
 # add STAI-S data to dataframe
-ICC2_tableSTAI <- ICC2_table %>% add_row(pastTime = "31 (1,4)", ICC2_agreement = ICC2.STAI.S, ICC2_lowerCI = lowB.STAI.S, ICC2_upperCI = upB.STAI.S, .after = 1)
+# for old y-scaling
+#ICC2_tableSTAI <- ICC2_table %>% add_row(pastTime = "31 (1,4)", ICC2_agreement = ICC2.STAI.S, ICC2_lowerCI = lowB.STAI.S, ICC2_upperCI = upB.STAI.S, .after = 1)
+
+# last left out (correct time points in brackets)
+#ICC2_tableSTAI <- ICC2_table %>% add_row(pastTime = "31 (2,7)", ICC2_agreement = ICC2.STAI.S, ICC2_lowerCI = lowB.STAI.S, ICC2_upperCI = upB.STAI.S, .after = 1)
 
 # add STAI-T first sample to dataframe 
-ICC2_tableAll <- ICC2_tableSTAI %>% add_row(pastTime = "41", ICC2_agreement = ICC2.T1, ICC2_lowerCI = lowB.T1, ICC2_upperCI = upB.T1, .before = 1)
+#ICC2_tableAll <- ICC2_tableSTAI %>% add_row(pastTime = "41", ICC2_agreement = ICC2.T1, ICC2_lowerCI = lowB.T1, ICC2_upperCI = upB.T1, .before = 1)
+ICC2_tableAll <- ICC2_table %>% add_row(pastTime = "41 (1,2)", ICC2_agreement = ICC2.T1, ICC2_lowerCI = lowB.T1, ICC2_upperCI = upB.T1, .before = 1)
 
 # add groups to dataframe for later coloring
-df.ICCs <- ICC2_tableAll %>% add_column(group = c("sample1", "sample2", "STAI-S", "sample2", "sample2", "sample2", "sample2", "sample2"), 
+#df.ICCs <- ICC2_tableAll %>% add_column(group = c("sample1", "sample2", "STAI-S", "sample2", "sample2", "sample2", "sample2", "sample2"), 
+#                                        .before = "pastTime")
+
+df.ICCs <- ICC2_tableAll %>% add_column(group = c("sample1", "sample2", "sample2", "sample2", "sample2", "sample2", "sample2"), 
                                         .before = "pastTime")
 
 # to make R respect the order in the dataframe
 df.ICCs$pastTime <- factor(df.ICCs$pastTime, levels = df.ICCs$pastTime[order(df.ICCs$ICC2_agreement)])
 
+# for legend purposes 
+#df.ICCs$Group <- c("Sample1", "Sample2", "STAI-S", "Sample2", "Sample2", "Sample2", "Sample2", "Sample2")
+
 # assign color to different groups
 color = rep(NA, length=length(df.ICCs$group))
 color[which(df.ICCs$group=="sample1")] = "coral2"
 color[which(df.ICCs$group=="sample2")] = "#91D1C2B2"
-color[which(df.ICCs$group=="STAI-S")] = "gray50"
+#color[which(df.ICCs$group=="STAI-S")] = "gray50"
 
-  ggplot(df.ICCs, aes(x=ICC2_agreement,y=pastTime, color=color)) +
-  geom_point(show.legend = F, color = color) + 
-  geom_errorbar(aes(xmin=ICC2_lowerCI, xmax=ICC2_upperCI), width=.5, color = color, show.legend = F) +
+  ggplot(df.ICCs, aes(x=ICC2_agreement, y=pastTime)) + #, group = group, colour = color)) + # fill=df.ICCs$group)) #color=color
+  geom_point(aes(color = group)) + 
+  geom_errorbar(aes(xmin=ICC2_lowerCI, xmax=ICC2_upperCI), width=.5, color = color) +
 
   geom_vline(xintercept = 0.0, color = "grey50", size = 1, linetype = "dotted") + 
   geom_vline(xintercept = 0.5, color = "grey50", size = 1, linetype = "dotted") +
@@ -862,10 +893,19 @@ color[which(df.ICCs$group=="STAI-S")] = "gray50"
   annotation_custom(grob1) +
   annotation_custom(grob2) +
   annotation_custom(grob3) +
-    scale_y_discrete(limits = c("5 (2,3)", "6 (3,4)", "12 (2,4)", "20 (1,2)", "26 (1,3)", "31 (1,4)", "32 (1,4)", "41")) +
-  labs(title = "", x = "ICC(2,1): absolute agreement", y = "Average elapsed time [months] with considered measuring points") +
-  theme_apa() + theme(axis.title = element_text(size = 8), axis.text = element_text(size = 8))
-
+    #scale_y_discrete(limits = c("5 (5,6)", "6 (6,7)", "12 (5,7)", "20 (1,5)", "26 (1,6)", "31 (2,7)", "32 (1,7)", "41")) +
+    # without STAI-S
+    scale_y_discrete(limits = c("5 (5,6)", "6 (6,7)", "12 (5,7)", "20 (1,5)", "26 (1,6)", "32 (1,7)", "41 (1,2)")) +
+  labs(title = "", x = "ICC: absolute agreement", y = "Average elapsed time [months] with considered measuring points") + #, color = "Legend") +
+   # scale_color_manual(values = color) +
+    scale_colour_manual(values = c("coral2", "#91D1C2B2", "gray50"), breaks = c("sample1", "sample2", "STAI-S"), labels = c("Study 1", "Study 2", "STAI-S")) +
+  theme_apa() + theme(axis.title = element_text(size = 10), axis.text = element_text(size = 10), legend.title = element_blank(), legend.position = c(.2,.2))
+  
+  # legend.title = element_text("Groups")
+  #scale_y_discrete(limits = c("5 (5,6)", "6 (6,7)", "12 (5,7)", "20 (1,5)", "26 (1,6)", "31 (1,7)", "32 (1,7)", "41")
+  
+  # old discrete y-scaling 
+  #scale_y_discrete(limits = c("5 (2,3)", "6 (3,4)", "12 (2,4)", "20 (1,2)", "26 (1,3)", "31 (1,4)", "32 (1,4)", "41")
 ```
 
 
