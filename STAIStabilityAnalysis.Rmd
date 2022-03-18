@@ -2,7 +2,9 @@
 title: "STAI Stability Analysis"
 author: "Franziska Werner"
 date: "29 10 2021"
-output: word_document
+output:
+  pdf_document: default
+  word_document: default
 papaja::apa6_docx: default
 floatsintext: no
 figurelist: no
@@ -15,7 +17,7 @@ documentclass: apa6
 classoption: man
 affiliation:
 - id: '1'
-  institution: UKE 
+  institution: UKE
 ---
 
 ```{r setup, include=FALSE}
@@ -30,7 +32,7 @@ library(car)
 library(ggplot2)
 library(knitr)
 library(kableExtra)
-library(psych)
+library(psych) # u.a. für cronbachs alpha
 #library(DescTools)
 library(data.table)
 library(plyr)
@@ -185,6 +187,7 @@ icc.ts <- round(ICC(df.tScore.icc, missing = FALSE, lmer = FALSE)[[1]][2,2], 3) 
 
 ```{r, Cronbachs alpha, echo=FALSE}
 # first sample, first measuring point 
+# package: psych
 ia1 <- data %>%
   select(MP1_Item1:MP1_Item20) %>%
   alpha()
@@ -602,6 +605,25 @@ apa_table(tbl.ItemAnalysis.T2,
           col_spanners = list(`Measurement 1` = c(2, 3), `Measurement 2` = c(4, 5), `95\\,\\% CI` = c(7, 8)))
 ```
 
+```{r, search for duplicate STAI-T score pairs, study 1}
+
+mean.tbl.T1.T2 <- data %>% select(OS_M1, OS_M2)
+# returns duplicate entries
+dbl.entries <- mean.tbl.T1.T2[duplicated(mean.tbl.T1.T2), ]
+# returns third same entry
+triple.entries <- dbl.entries[duplicated(dbl.entries), ]
+# remove triple entry
+dbl.entries.new <- dbl.entries[!duplicated(dbl.entries), ]
+
+```
+
+```{r, search for duplicate STAI-T score pairs, study 2}
+
+mean.tbl.T1.T7 <- tb.data %>% select(T1, T4)
+dbl.entries.S2 <- mean.tbl.T1.T7[duplicated(mean.tbl.T1.T7), ]
+
+```
+
 ```{r, correlation plot 1st sample, message = F, warning = F}
 
 ICC.T1 <- ICC(data %>% select(OS_M1, OS_M2), missing = F, lmer = F)
@@ -613,11 +635,13 @@ upB.T1  <- round(ICC.T1[[1]][2,8], 3)
 
 plt.CorTS.T1 <-
   ggplot(data, aes(x = OS_M1, y = OS_M2)) + 
-  geom_point(size = .3, color = "coral2", position = position_jitter(w = 0.2, h = 0)) + 
+  geom_point(size = .3, color = "coral2") + #, position = position_jitter(w = 0.2, h = 0)) + 
+  geom_count(data = dbl.entries.new, position = "identity", show.legend = FALSE, inherit.aes = TRUE, color = "coral2", size = 1) +
+  geom_count(data = triple.entries, position = "identity", show.legend = FALSE, inherit.aes = TRUE, color = "coral2", size = 1.5) +
   geom_smooth(aes(fill = "coral2"), method ="lm", se = TRUE, color = "coral2", size = .8, show.legend = F) +
   annotate("text", x = 32, y = 62, label = "ICC = .43, CI [.29,.55]", size = 3.5) +
   ylim(20, 62) +
-  labs(title = "Study 1", x = "First measurement (T1)", y = "Measurement after approx. 41 months (T2)") +
+  labs(title = "Study 1", x = "First Measurement (T1)", y = "Measurement after approx. 41 months (T2)") +
   theme_apa() + theme(title = element_text(size = 10), axis.title = element_text(size = 10), axis.text = element_text(size = 8))
 
 ```
@@ -633,7 +657,8 @@ upB.T2  <- round(ICC.T2[[1]][2,8], 3)
 
 plt.CorTS.T2 <- 
   ggplot(tb.data, aes(x = T1, y = T4)) + 
-  geom_point(size = .3, col = '#91D1C2B2', alpha = 1, position = position_jitter(w = 0.2, h = 0)) + 
+  geom_point(size = .3, col = '#91D1C2B2', alpha = 1) + # , position = position_jitter(w = 0.2, h = 0)) + 
+  geom_count(data = dbl.entries.S2, position = "identity", show.legend = FALSE, inherit.aes = TRUE, color = "#91D1C2B2", size = 1) +
   geom_smooth(method="lm", se = TRUE, fill = '#91D1C2B2', col = '#91D1C2B2', size = .8, show.legend = F) +
   annotate("text", x = 33, y = 62, label = "ICC = .49, CI [.34,.62]", size = 3.5) +
   labs(title = "Study 2", x = "First Measurement (T1)", y = "Measurement after approx. 32 months (T7)") +
